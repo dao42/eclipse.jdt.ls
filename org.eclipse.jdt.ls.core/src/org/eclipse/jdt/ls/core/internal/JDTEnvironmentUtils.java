@@ -20,6 +20,7 @@ public class JDTEnvironmentUtils {
 
 	public static final String CLIENT_PORT = "CLIENT_PORT";
 	public static final String CLIENT_HOST = "CLIENT_HOST";
+	public static final String JDTLS_SERVER_PORT = "JDTLS_SERVER_PORT";
 	public static final String DEFAULT_CLIENT_HOST = "localhost";
 	public static final String SYNTAX_SERVER_ID = "syntaxserver";
 
@@ -55,6 +56,16 @@ public class JDTEnvironmentUtils {
 	 */
 	public static String getClientHost() {
 		return Environment.get(CLIENT_HOST);
+	}
+
+	public static Integer getJdtlsServerPort() {
+		final String port = Environment.get(JDTLS_SERVER_PORT);
+		if (port != null) {
+			int serverPort = Integer.parseInt(port);
+			Preconditions.checkState(serverPort >= 1 && serverPort <= 65535, "The port must be an integer between 1 and 65535. It was: '" + port + "'.");
+			return serverPort;
+		}
+		return null;
 	}
 
 	/**

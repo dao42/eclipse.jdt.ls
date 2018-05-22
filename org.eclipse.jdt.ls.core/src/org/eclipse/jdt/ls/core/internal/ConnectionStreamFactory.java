@@ -15,7 +15,14 @@ package org.eclipse.jdt.ls.core.internal;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketAddress;
+import java.nio.channels.AsynchronousServerSocketChannel;
+import java.nio.channels.AsynchronousSocketChannel;
+import java.nio.channels.Channels;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.core.runtime.Platform;
 
@@ -26,6 +33,8 @@ import org.eclipse.core.runtime.Platform;
  *
  */
 public class ConnectionStreamFactory {
+
+	private static final String LOCALHOST = "localhost";
 
 	interface StreamProvider {
 		InputStream getInputStream() throws IOException;
@@ -61,6 +70,49 @@ public class ConnectionStreamFactory {
 		@Override
 		public OutputStream getOutputStream() throws IOException {
 			if (fOutputStream == null) {
+				initializeConnection();
+			}
+			return fOutputStream;
+		}
+	}
+
+	protected final class LanguageServerStreamProvider implements StreamProvider {
+		private final int port;
+		private InputStream fInputStream;
+		private OutputStream fOutputStream;
+		private AtomicBoolean initialized;
+
+		public LanguageServerStreamProvider(int port) {
+			this.port = port;
+			this.initialized = new AtomicBoolean(false);
+		}
+
+		private void initializeConnection() throws IOException {
+			initialized.set(true);
+			SocketAddress socketAddress = new InetSocketAddress(LOCALHOST, port);
+			AsynchronousServerSocketChannel serverSocket = AsynchronousServerSocketChannel.open().bind(socketAddress);
+			AsynchronousSocketChannel socketChannel;
+			try {
+				socketChannel = serverSocket.accept().get();
+			} catch (InterruptedException | ExecutionException e) {
+				JavaLanguageServerPlugin.logException(e.getMessage(), e);
+				return;
+			}
+			fInputStream = Channels.newInputStream(socketChannel);
+			fOutputStream = Channels.newOutputStream(socketChannel);
+		}
+
+		@Override
+		public synchronized InputStream getInputStream() throws IOException {
+			if (!initialized.get()) {
+				initializeConnection();
+			}
+			return fInputStream;
+		}
+
+		@Override
+		public synchronized OutputStream getOutputStream() throws IOException {
+			if (!initialized.get()) {
 				initializeConnection();
 			}
 			return fOutputStream;
@@ -104,6 +156,10 @@ public class ConnectionStreamFactory {
 		Integer port = JDTEnvironmentUtils.getClientPort();
 		if (port != null) {
 			return new SocketStreamProvider(JDTEnvironmentUtils.getClientHost(), port);
+		}
+		port = JDTEnvironmentUtils.getJdtlsServerPort();
+		if (port != null) {
+			return new LanguageServerStreamProvider(port);
 		}
 		return new StdIOStreamProvider();
 	}
